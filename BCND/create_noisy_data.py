@@ -38,14 +38,14 @@ def main(expert_data_path, noise_data_path, save_path, ep, seed):
         key=jax.random.PRNGKey(seed),
         expert_data=expert_data,
         noise_data=noise_data,
-        ep=ep
+        ep=ep,
     )
 
     save_path = f"{save_path}/{ep}"
     save_data(save_path, mix_data)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     env_name = "ant"
     ep = 0.5
 
@@ -57,12 +57,13 @@ if __name__ == '__main__':
 
     for noise_name, seed in name_and_seed:
         noise_data_path = f"{data_path}/{env_name}/{noise_name}/trajectories.json"
-        save_data_path = f"{current_file_path}/noisy_data/{env_name}/expert-{noise_name}"
+        save_data_path = (
+            f"{current_file_path}/noisy_data/{env_name}/expert-{noise_name}"
+        )
         main(
             expert_data_path=expert_data_path,
             noise_data_path=noise_data_path,
             save_path=save_data_path,
             ep=ep,
-            seed=seed
+            seed=seed,
         )
-

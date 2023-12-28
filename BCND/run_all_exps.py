@@ -19,10 +19,8 @@ def save_data(path, data):
 
 
 def main(env, noise_name, k, batch, epochs, algo):
-    # seeds = [0, 1, 2, 3, 4]
-    # noise_levels = ["0.0", "0.1", "0.2", "0.3", "0.4", "0.5"]
-    seeds = [0, 1]
-    noise_levels = ["0.1"]
+    seeds = [0, 1, 2, 3, 4]
+    noise_levels = ["0.0", "0.1", "0.2", "0.3", "0.4", "0.5"]
 
     meta_data = []
     for noise_level in noise_levels:

@@ -18,16 +18,6 @@ import optax
 
 DTYPE = Any
 
-# SEED = 0
-# K = 5
-# BATCH_SIZE = 128
-# NUM_EPOCHS = 2
-# LEARNING_RATE = K * 1e-4
-# ENV_NAME = "ant"
-# NOISE_NAME = "normal"
-# NOISE_LEVEL = "0.1"
-# NUM_EVALS = 5
-
 
 def get_argparser():
     parser = argparse.ArgumentParser(description="Parse arguments for BCND")

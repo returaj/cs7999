@@ -79,6 +79,7 @@ class MeanPolicy:
         dummy_x = jnp.zeros(self.xsize)
         return self.policies.init(key, dummy_x, None)
 
+    @functools.partial(jax.jit, static_argnums=0)
     def log_value(self, x, u, params):
         def log_norm(u, mu, log_std):
             cov = jnp.diag(jnp.exp(log_std * 2))
@@ -107,12 +108,11 @@ class TrainState(train_state.TrainState):
 def get_trajectory_dataset(path):
     with open(path, "r") as f:
         data = json.load(f)
-    X, Y, expert_reward = [], [], []
+    X, Y = [], []
     for traj in data:
         X.extend(traj["states"])
         Y.extend(traj["actions"])
-        expert_reward.append(traj["reward"])
-    return jnp.array(X), jnp.array(Y), jnp.mean(jnp.array(expert_reward))
+    return jnp.array(X), jnp.array(Y)
 
 
 def create_trainstate(policy_model, key, learning_rate):
@@ -186,8 +186,8 @@ def train(trainstate, dataset, key, batch_size, num_epochs, train_epoch_fn):
         )
         trainstate, loss = train_epoch_fn(trainstate, perm, dataset)
         losses.append(loss)
-        if ((ep + 1) % 1) == 0:
-            print(f"epoch: {ep}, loss: {loss}")
+        if ((ep + 1) % 10) == 0:
+            print(f"epoch: {ep + 1}, loss: {loss}")
     return trainstate, losses
 
 
@@ -217,7 +217,7 @@ if __name__ == "__main__":
 
     current_file_path = os.path.dirname(__file__)
     dataset_path = f"{current_file_path}/noisy_data/{args.env}/expert-{args.noise_name}/{args.noise_level}/trajectories.json"
-    X, Y, avg_expert_reward = get_trajectory_dataset(dataset_path)
+    X, Y = get_trajectory_dataset(dataset_path)
     key = jax.random.PRNGKey(seed=args.seed)
     policy_model = MeanPolicy(k=args.k, xsize=X.shape[-1], usize=Y.shape[-1])
     learning_rate = args.k * 1e-4
@@ -234,5 +234,5 @@ if __name__ == "__main__":
     env = envs.create(env_name=args.env, backend="positional")
     avg_rwd = evaluate(env, key, policy_model, trainstate.params, args.num_evals)
     print(
-        f"Avg reward for {args.env} under {args.noise_level} epsilon {args.noise_name} policy: {avg_rwd}/{avg_expert_reward}"
+        f"Avg reward for {args.env} under {args.noise_level} epsilon {args.noise_name} policy: {avg_rwd}"
     )

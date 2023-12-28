@@ -49,7 +49,7 @@ if __name__ == "__main__":
     env_name = "ant"
     ep = 0.5
 
-    name_and_seed = [("random", 0), ("normal", 1), ("zero", 2)]
+    name_and_seed = [("random", 1), ("normal", 1), ("zero", 1)]
 
     current_file_path = os.path.dirname(__file__)
     data_path = f"{current_file_path}/../trajectories/data"

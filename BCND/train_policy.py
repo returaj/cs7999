@@ -139,7 +139,8 @@ def train_epoch_bcnd(trainstate, perm, dataset):
         batch_rwd = jnp.exp(
             trainstate.apply_fn(batch_x, batch_y, trainstate.old_params)
         )
-        batch_rwd /= jnp.sum(batch_rwd)
+        batch_rwd -= jnp.max(batch_rwd)
+        batch_rwd /= jnp.sum(batch_rwd) + 1e-6
 
         def loss_fn(params):
             log_values = trainstate.apply_fn(batch_x, batch_y, params)

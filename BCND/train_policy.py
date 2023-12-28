@@ -79,12 +79,14 @@ class MeanPolicy:
     @functools.partial(jax.jit, static_argnums=0)
     def log_value(self, x, u, params):
         def log_norm(u, mu, log_std):
-            cov = jnp.diag(jnp.exp(log_std * 2))
+            sigma_2 = jnp.maximum(jnp.exp(log_std * 2), 1e-6)  # avoid floating error
+            cov = jnp.diag(sigma_2)
             return multivariate_normal.logpdf(u, mean=mu, cov=cov)
 
         means, log_stds = self.predict_means_and_logstds(x, params)
         values = jax.vmap(log_norm, in_axes=(None, 0, 0))(u, means, log_stds)
-        return jnp.log(jnp.mean(jnp.exp(values)))
+        pdfs = jnp.maximum(jnp.exp(values), 1e-6)  # avoid floating error
+        return jnp.log(jnp.mean(pdfs))
 
     def predict_means_and_logstds(self, x, params):
         _, (means, log_stds) = self.policies.apply(params, x, None)
@@ -191,10 +193,10 @@ def train(
         )
         trainstate, loss = train_epoch_fn(trainstate, perm, dataset)
         losses.append(loss)
-        if ((ep + 1) % 2) == 0:
+        if ((ep + 1) % 20) == 0:
             key, subkey = jax.random.split(key)
             eval_rwd = evaluate(
-                env_tuples, subkey, policy_model, trainstate.params, num_evals=1
+                env_tuples, subkey, policy_model, trainstate.params, num_evals=3
             )
             eval_rewards.append(eval_rwd)
             print(f"epoch: {ep + 1}, loss: {loss}, eval_reward: {eval_rwd}")

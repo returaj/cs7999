@@ -30,9 +30,6 @@ def get_argparser():
     parser.add_argument("--noise_name", type=str, default="normal", help="noise name")
     parser.add_argument("--noise_level", type=str, default="0.1", help="noise level")
     parser.add_argument("--k", type=int, default=5, help="number of ensembles")
-    parser.add_argument(
-        "--num_evals", type=int, default=5, help="number of evaluations"
-    )
     parser.add_argument("--algo", type=str, default="bc", help="algorithm type")
     return parser
 
@@ -136,10 +133,8 @@ def train_epoch_bcnd(trainstate, perm, dataset):
     @jax.jit
     def train_batch(trainstate, p):
         batch_x, batch_y = X[p], Y[p]
-        batch_rwd = jnp.exp(
-            trainstate.apply_fn(batch_x, batch_y, trainstate.old_params)
-        )
-        batch_rwd -= jnp.max(batch_rwd)
+        batch_log_rwd = trainstate.apply_fn(batch_x, batch_y, trainstate.old_params)
+        batch_rwd = jnp.exp(batch_log_rwd - jnp.max(batch_log_rwd))
         batch_rwd /= jnp.sum(batch_rwd) + 1e-6
 
         def loss_fn(params):
@@ -175,11 +170,20 @@ def train_epoch_bc(trainstate, perm, dataset):
     return trainstate, jnp.mean(losses)
 
 
-def train(trainstate, dataset, key, batch_size, num_epochs, train_epoch_fn):
+def train(
+    env_tuples,
+    policy_model,
+    trainstate,
+    dataset,
+    key,
+    batch_size,
+    num_epochs,
+    train_epoch_fn,
+):
     datasize = dataset[0].shape[0]
     steps_per_epoch = datasize // batch_size
 
-    losses = []
+    losses, eval_rewards = [], []
     for ep in range(num_epochs):
         key, subkey = jax.random.split(key)
         perm = jax.random.choice(
@@ -187,14 +191,18 @@ def train(trainstate, dataset, key, batch_size, num_epochs, train_epoch_fn):
         )
         trainstate, loss = train_epoch_fn(trainstate, perm, dataset)
         losses.append(loss)
-        if ((ep + 1) % 10) == 0:
-            print(f"epoch: {ep + 1}, loss: {loss}")
-    return trainstate, losses
+        if ((ep + 1) % 2) == 0:
+            key, subkey = jax.random.split(key)
+            eval_rwd = evaluate(
+                env_tuples, subkey, policy_model, trainstate.params, num_evals=1
+            )
+            eval_rewards.append(eval_rwd)
+            print(f"epoch: {ep + 1}, loss: {loss}, eval_reward: {eval_rwd}")
+    return trainstate, losses, eval_rewards
 
 
-def evaluate(env, key, policy_model, params, num_evals):
-    jit_env_reset = jax.jit(env.reset)
-    jit_env_step = jax.jit(env.step)
+def evaluate(env_tuples, key, policy_model, params, num_evals):
+    jit_env_reset, jit_env_step = env_tuples
 
     avg_rwd = 0
     for i in range(num_evals):
@@ -210,30 +218,48 @@ def evaluate(env, key, policy_model, params, num_evals):
     return avg_rwd
 
 
+def main(seed, env, noise_name, noise_level, k, batch, epochs, algo):
+    current_file_path = os.path.dirname(__file__)
+    dataset_path = f"{current_file_path}/noisy_data/{env}/expert-{noise_name}/{noise_level}/trajectories.json"
+    X, Y = get_trajectory_dataset(dataset_path)
+    key = jax.random.PRNGKey(seed=seed)
+    policy_model = MeanPolicy(k=k, xsize=X.shape[-1], usize=Y.shape[-1])
+    learning_rate = k * 1e-4
+    trainstate = create_trainstate(policy_model, key, learning_rate)
+    train_epoch_fn = train_epoch_bc if algo == "bc" else train_epoch_bcnd
+    env = envs.create(env_name=env, backend="positional")
+    env_tuples = jax.jit(env.reset), jax.jit(env.step)
+    trainstate, losses, eval_rewards = train(
+        env_tuples=env_tuples,
+        policy_model=policy_model,
+        trainstate=trainstate,
+        dataset=(X, Y),
+        key=key,
+        batch_size=batch,
+        num_epochs=epochs,
+        train_epoch_fn=train_epoch_fn,
+    )
+
+    return trainstate.params, losses, eval_rewards
+
+
 if __name__ == "__main__":
     parser = get_argparser()
     args = parser.parse_args()
 
     print(args)
 
-    current_file_path = os.path.dirname(__file__)
-    dataset_path = f"{current_file_path}/noisy_data/{args.env}/expert-{args.noise_name}/{args.noise_level}/trajectories.json"
-    X, Y = get_trajectory_dataset(dataset_path)
-    key = jax.random.PRNGKey(seed=args.seed)
-    policy_model = MeanPolicy(k=args.k, xsize=X.shape[-1], usize=Y.shape[-1])
-    learning_rate = args.k * 1e-4
-    trainstate = create_trainstate(policy_model, key, learning_rate)
-    train_epoch_fn = train_epoch_bc if args.algo == "bc" else train_epoch_bcnd
-    trainstate, losses = train(
-        trainstate=trainstate,
-        dataset=(X, Y),
-        key=key,
-        batch_size=args.batch,
-        num_epochs=args.epochs,
-        train_epoch_fn=train_epoch_fn,
+    _, _, eval_rewards = main(
+        seed=args.seed,
+        env=args.env,
+        noise_name=args.noise_name,
+        noise_level=args.noise_level,
+        k=args.k,
+        batch=args.batch,
+        epochs=args.epochs,
+        algo=args.algo,
     )
-    env = envs.create(env_name=args.env, backend="positional")
-    avg_rwd = evaluate(env, key, policy_model, trainstate.params, args.num_evals)
+
     print(
-        f"Avg reward for {args.env} under {args.noise_level} epsilon {args.noise_name} policy: {avg_rwd}"
+        f"Avg reward for {args.env} under {args.noise_level} epsilon {args.noise_name} policy: {eval_rewards[-1]}"
     )

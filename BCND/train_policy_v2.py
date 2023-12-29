@@ -150,8 +150,8 @@ def get_trajectory_dataset(path):
 def evaluate(env_tuples, key, policy_model, params, num_evals):
     jit_env_reset, jit_env_step = env_tuples
 
-    avg_rwd = 0
-    for i in range(num_evals):
+    rewards = []
+    for _ in range(num_evals):
         key, state_key, sub_key = jax.random.split(key, 3)
         rwd = 0
         state = jit_env_reset(rng=state_key)
@@ -160,8 +160,9 @@ def evaluate(env_tuples, key, policy_model, params, num_evals):
             act = policy_model.sample(state.obs, params, act_key)
             state = jit_env_step(state, act)
             rwd += state.reward
-        avg_rwd += (rwd - avg_rwd) / (i + 1)
-    return avg_rwd
+        rewards.append(rwd)
+    rewards = jnp.array(rewards)
+    return jnp.mean(rewards), jnp.std(rewards)
 
 
 def create_log_rewards(mean_policy, dataset, params):
@@ -269,9 +270,13 @@ def train(
         losses.append(loss)
         if ((ep + 1) % 1) == 0:
             key, subkey = jax.random.split(key)
-            eval_rwd = evaluate(env_tuples, subkey, mean_policy, params, num_evals=3)
-            eval_rewards.append(eval_rwd)
-            print(f"epoch: {ep + 1}, loss: {loss}, eval_reward: {eval_rwd}")
+            eval_rwd, eval_std = evaluate(
+                env_tuples, subkey, mean_policy, params, num_evals=3
+            )
+            eval_rewards.append((eval_rwd, eval_std))
+            print(
+                f"epoch: {ep + 1}, loss: {loss:.5f}, eval_reward: {eval_rwd:.3f}, eval_std: {eval_std:.3f}"
+            )
     return params, losses, eval_rewards
 
 
@@ -325,5 +330,5 @@ if __name__ == "__main__":
     )
 
     print(
-        f"Avg reward for {args.env} under {args.noise_level} epsilon {args.noise_name} policy: {eval_rewards[-1]}"
+        f"Avg reward for {args.env} under {args.noise_level} epsilon {args.noise_name} policy: {eval_rewards[-1][0]:.3f} +- {eval_rewards[-1][1]:.3f}"
     )

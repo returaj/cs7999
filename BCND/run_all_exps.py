@@ -3,7 +3,7 @@
 import os
 import json
 
-import train_policy
+import BCND.train_policy_v1 as train_policy_v1
 
 
 def make_all_val_float(list_data):
@@ -30,7 +30,7 @@ def main(env, noise_name, k, batch, epochs, algo):
             print(
                 f"seed: {seed}, env: {env}, noise_name: {noise_name}, noise_level: {noise_level}, k: {k}, algo: {algo}\n"
             )
-            _, losses, eval_rewards = train_policy.main(
+            _, losses, eval_rewards = train_policy_v1.main(
                 seed=seed,
                 env=env,
                 noise_name=noise_name,
@@ -69,7 +69,7 @@ def main(env, noise_name, k, batch, epochs, algo):
 
 
 if __name__ == "__main__":
-    parser = train_policy.get_argparser()
+    parser = train_policy_v1.get_argparser()
     # in args define only env, noise_name, k, algo
     args = parser.parse_args()
     main(

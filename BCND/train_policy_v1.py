@@ -21,7 +21,7 @@ DTYPE = Any
 
 def get_argparser():
     parser = argparse.ArgumentParser(description="Parse arguments for BCND")
-    parser.add_argument("-seed", type=int, default=0, help="seed")
+    parser.add_argument("--seed", type=int, default=0, help="seed")
     parser.add_argument("--batch", type=int, default=128, help="batch size")
     parser.add_argument(
         "--epochs", type=int, default=500, help="number of training epochs"

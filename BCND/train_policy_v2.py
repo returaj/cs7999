@@ -268,7 +268,7 @@ def train(
             log_rewards=log_rewards,
         )
         losses.append(loss)
-        if ((ep + 1) % 1) == 0:
+        if ((ep + 1) % 20) == 0:
             key, subkey = jax.random.split(key)
             eval_rwd, eval_std = evaluate(
                 env_tuples, subkey, mean_policy, params, num_evals=3

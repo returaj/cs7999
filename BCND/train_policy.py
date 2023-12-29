@@ -110,10 +110,6 @@ class MeanPolicy:
         return jnp.mean(values, axis=0)
 
 
-class TrainState(train_state.TrainState):
-    old_params: flax.core.FrozenDict[str, Any] = None
-
-
 def get_trajectory_dataset(path):
     with open(path, "r") as f:
         data = json.load(f)
@@ -130,10 +126,9 @@ def create_trainstate(policy_model, key, learning_rate):
 
     params = policy_model.initialize_params(key)
     tx = optax.adam(learning_rate=learning_rate)
-    return TrainState.create(
+    return train_state.TrainState.create(
         apply_fn=_get_batch_processing_fn(policy_model.log_value, in_axes=(0, 0, None)),
         params=params,
-        old_params=params,
         tx=tx,
     )
 
@@ -141,11 +136,11 @@ def create_trainstate(policy_model, key, learning_rate):
 @jax.jit
 def train_epoch_bcnd(trainstate, perm, dataset):
     X, Y = dataset
+    log_rewards = trainstate.apply_fn(X, Y, trainstate.params)
 
     @jax.jit
     def train_batch(trainstate, p):
-        batch_x, batch_y = X[p], Y[p]
-        batch_log_rwd = trainstate.apply_fn(batch_x, batch_y, trainstate.old_params)
+        batch_x, batch_y, batch_log_rwd = X[p], Y[p], log_rewards[p]
         batch_rwd = jnp.exp(batch_log_rwd - jnp.max(batch_log_rwd))
         batch_rwd /= jnp.sum(batch_rwd) + 1e-6
 
@@ -158,7 +153,6 @@ def train_epoch_bcnd(trainstate, perm, dataset):
         return trainstate, loss
 
     trainstate, losses = jax.lax.scan(train_batch, trainstate, perm)
-    trainstate = trainstate.replace(old_params=trainstate.params)
     return trainstate, jnp.mean(losses)
 
 

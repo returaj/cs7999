@@ -34,6 +34,15 @@ def get_argparser():
     return parser
 
 
+@jax.jit
+def logmeanexp(x):
+    # x is a 1d array
+    xmax = jnp.max(x)
+    # log(exp(x1) + exp(x2) + ..) = xmax + log(exp(x1-xmax) + exp(x2-xmax) + ..)
+    logsumexp = xmax + jnp.log(jnp.sum(jnp.exp(x - xmax)))
+    return logsumexp - jnp.log(x.shape[-1])
+
+
 class MLP(nn.Module):
     out: int
     num_hidden_units: int = 100
@@ -85,8 +94,9 @@ class MeanPolicy:
 
         means, log_stds = self.predict_means_and_logstds(x, params)
         values = jax.vmap(log_norm, in_axes=(None, 0, 0))(u, means, log_stds)
-        pdfs = jnp.maximum(jnp.exp(values), 1e-6)  # avoid floating error
-        return jnp.log(jnp.mean(pdfs))
+        # pdfs = jnp.maximum(jnp.exp(values), 1e-6)  # avoid floating error
+        # return jnp.log(jnp.mean(pdfs))
+        return logmeanexp(values)
 
     def predict_means_and_logstds(self, x, params):
         _, (means, log_stds) = self.policies.apply(params, x, None)

@@ -164,4 +164,5 @@ cython_debug/
 
 # saved trajectories/data
 trajectories/data/
+BCND/noisy_data/
 

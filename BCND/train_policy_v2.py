@@ -162,7 +162,7 @@ def evaluate(env_tuples, key, policy_model, params, num_evals):
             rwd += state.reward
         rewards.append(rwd)
     rewards = jnp.array(rewards)
-    return jnp.mean(rewards), jnp.std(rewards)
+    return jnp.mean(rewards), jnp.std(rewards), jnp.min(rewards), jnp.max(rewards)
 
 
 def create_log_rewards(mean_policy, dataset, params):
@@ -270,12 +270,13 @@ def train(
         losses.append(loss)
         if ((ep + 1) % 20) == 0:
             key, subkey = jax.random.split(key)
-            eval_rwd, eval_std = evaluate(
+            eval_rwd, eval_std, eval_min, eval_max = evaluate(
                 env_tuples, subkey, mean_policy, params, num_evals=3
             )
-            eval_rewards.append((eval_rwd, eval_std))
+            eval_rewards.append((eval_rwd, eval_std, eval_min, eval_max))
             print(
-                f"epoch: {ep + 1}, loss: {loss:.5f}, eval_reward: {eval_rwd:.3f}, eval_std: {eval_std:.3f}"
+                f"epoch: {ep + 1}, loss: {loss:.5f}, eval_reward: {eval_rwd:.3f}, "
+                + f"eval_std: {eval_std:.3f}, eval_min: {eval_min:.3f}, eval_max: {eval_max:.3f}"
             )
     return params, losses, eval_rewards
 

@@ -29,6 +29,12 @@ def get_argparser():
     parser.add_argument("--noise_level", type=str, default="0.1", help="noise level")
     parser.add_argument("--k", type=int, default=5, help="number of ensembles")
     parser.add_argument("--algo", type=str, default="bc", help="algorithm type")
+    parser.add_argument(
+        "--rwd_update",
+        type=int,
+        default=1,
+        help="calculate reward after every rwd_update epoch",
+    )
     return parser
 
 
@@ -165,13 +171,19 @@ def evaluate(env_tuples, key, policy_model, params, num_evals):
     return jnp.mean(rewards), jnp.std(rewards), jnp.min(rewards), jnp.max(rewards)
 
 
+@functools.partial(jax.jit, static_argnums=0)
 def create_log_rewards(mean_policy, dataset, params):
     X, Y = dataset
-    log_rewards = []
-    for x, y in zip(X, Y):
-        sample_means, sample_logstds = mean_policy.means_and_logstds(x, params)
-        log_rewards.append(mean_policy.log_value(y, sample_means, sample_logstds))
-    return jnp.array(log_rewards)
+    policy_model = mean_policy.policy_model
+
+    def fn(x, y, params):
+        mean, logstd = policy_model.mean_and_logstd(x, params)
+        return policy_model.log_value(y, mean, logstd)
+
+    # fix 0th model for reward calculation K_old = 1
+    # See: BCND paper: https://openreview.net/forum?id=zrT3HcsWSAt
+    subparams = params[0]
+    return jax.vmap(fn, in_axes=(0, 0, None))(X, Y, subparams)
 
 
 def get_pred_fn(mean_policy):
@@ -243,6 +255,7 @@ def train(
     batch_size,
     num_epochs,
     algo,
+    rwd_update,
 ):
     k = mean_policy.k
     datasize = dataset[0].shape[0]
@@ -257,7 +270,7 @@ def train(
         perm = jax.random.choice(
             subkey, datasize, shape=(k, steps_per_model, batch_size), replace=False
         )
-        if algo == "bcnd":
+        if (algo == "bcnd") and ((ep % rwd_update) == 0):
             log_rewards = create_log_rewards(mean_policy, dataset, params)
         opt_states, params, loss = train_epoch(
             pred_fn=pred_fn,
@@ -288,7 +301,7 @@ def create_opts_params(mean_policy, key, learning_rate):
     return opt, opt_states, params
 
 
-def main(seed, env, noise_name, noise_level, k, batch, epochs, algo):
+def main(seed, env, noise_name, noise_level, k, batch, epochs, algo, rwd_update):
     current_file_path = os.path.dirname(__file__)
     dataset_path = f"{current_file_path}/noisy_data/{env}/expert-{noise_name}/{noise_level}/trajectories.json"
     X, Y = get_trajectory_dataset(dataset_path)
@@ -309,6 +322,7 @@ def main(seed, env, noise_name, noise_level, k, batch, epochs, algo):
         batch_size=batch,
         num_epochs=epochs,
         algo=algo,
+        rwd_update=rwd_update,
     )
     return params, losses, eval_rewards
 
@@ -328,6 +342,7 @@ if __name__ == "__main__":
         batch=args.batch,
         epochs=args.epochs,
         algo=args.algo,
+        rwd_update=args.rwd_update,
     )
 
     print(

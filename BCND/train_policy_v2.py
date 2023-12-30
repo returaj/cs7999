@@ -35,6 +35,11 @@ def get_argparser():
         default=1,
         help="calculate reward after every rwd_update epoch",
     )
+    parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="if we want to normalize our state space",
+    )
     return parser
 
 
@@ -143,7 +148,7 @@ class MeanPolicy:
         return jnp.mean(values, axis=0)
 
 
-def evaluate(env_tuples, key, policy_model, params, num_evals):
+def evaluate(env_tuples, normalize_fn, mean_policy, num_evals, params, key):
     jit_env_reset, jit_env_step = env_tuples
 
     rewards = []
@@ -153,7 +158,7 @@ def evaluate(env_tuples, key, policy_model, params, num_evals):
         state = jit_env_reset(rng=state_key)
         for _ in range(1000):
             sub_key, act_key = jax.random.split(sub_key)
-            act = policy_model.sample(state.obs, params, act_key)
+            act = mean_policy.sample(normalize_fn(state.obs), params, act_key)
             state = jit_env_step(state, act)
             rwd += state.reward
         rewards.append(rwd)
@@ -236,7 +241,7 @@ def train_epoch(pred_fn, opt_tuple, params, perm, dataset, log_rewards):
 
 
 def train(
-    env_tuples,
+    evaluate_fn,
     mean_policy,
     opt_tuple,
     params,
@@ -273,9 +278,7 @@ def train(
         losses.append(loss)
         if ((ep + 1) % 20) == 0:
             key, subkey = jax.random.split(key)
-            eval_rwd, eval_std, eval_min, eval_max = evaluate(
-                env_tuples, subkey, mean_policy, params, num_evals=3
-            )
+            eval_rwd, eval_std, eval_min, eval_max = evaluate_fn(params, subkey)
             eval_rewards.append((eval_rwd, eval_std, eval_min, eval_max))
             print(
                 f"epoch: {ep + 1}, loss: {loss:.5f}, eval_reward: {eval_rwd:.3f}, "
@@ -291,10 +294,36 @@ def create_opts_params(mean_policy, key, learning_rate):
     return opt, opt_states, params
 
 
-def main(seed, env, noise_name, noise_level, k, batch, epochs, algo, rwd_update=1):
+def get_normalize_fn(data, normalize):
+    if not normalize:
+        return lambda x: x
+
+    mean_data = jnp.mean(data, axis=0)
+    std_data = jnp.mean(data, axis=0)
+
+    def normalize_fn(X):
+        return (X - mean_data) / std_data
+
+    return jax.jit(normalize_fn)
+
+
+def main(
+    seed,
+    env,
+    noise_name,
+    noise_level,
+    k,
+    batch,
+    epochs,
+    algo,
+    rwd_update=1,
+    normalize=True,
+):
     current_file_path = os.path.dirname(__file__)
     dataset_path = f"{current_file_path}/noisy_data/{env}/expert-{noise_name}/{noise_level}/trajectories.json"
     X, Y = get_trajectory_dataset(dataset_path)
+    normalize_fn = get_normalize_fn(X, normalize)
+    norm_X, norm_Y = normalize_fn(X), Y  # is assumed to be in between (-1, 1)
     key = jax.random.PRNGKey(seed=seed)
     policy_model = PolicyModel(xsize=X.shape[-1], usize=Y.shape[-1])
     mean_policy = MeanPolicy(k=k, polciy_model=policy_model)
@@ -302,12 +331,16 @@ def main(seed, env, noise_name, noise_level, k, batch, epochs, algo, rwd_update=
     opt, opt_states, params = create_opts_params(mean_policy, key, learning_rate)
     env = envs.create(env_name=env, backend="positional")
     env_tuples = jax.jit(env.reset), jax.jit(env.step)
+    num_evals = 3
+    evaluate_fn = functools.partial(
+        evaluate, env_tuples, normalize_fn, mean_policy, num_evals
+    )
     params, losses, eval_rewards = train(
-        env_tuples=env_tuples,
+        evaluate_fn=evaluate_fn,
         mean_policy=mean_policy,
         opt_tuple=(opt, opt_states),
         params=params,
-        dataset=(X, Y),
+        dataset=(norm_X, norm_Y),
         key=key,
         batch_size=batch,
         num_epochs=epochs,
@@ -333,6 +366,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         algo=args.algo,
         rwd_update=args.rwd_update,
+        normalize=args.normalize,
     )
 
     print(

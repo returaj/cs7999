@@ -301,7 +301,7 @@ def create_opts_params(mean_policy, key, learning_rate):
     return opt, opt_states, params
 
 
-def main(seed, env, noise_name, noise_level, k, batch, epochs, algo, rwd_update):
+def main(seed, env, noise_name, noise_level, k, batch, epochs, algo, rwd_update=1):
     current_file_path = os.path.dirname(__file__)
     dataset_path = f"{current_file_path}/noisy_data/{env}/expert-{noise_name}/{noise_level}/trajectories.json"
     X, Y = get_trajectory_dataset(dataset_path)

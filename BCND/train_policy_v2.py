@@ -143,16 +143,6 @@ class MeanPolicy:
         return jnp.mean(values, axis=0)
 
 
-def get_trajectory_dataset(path):
-    with open(path, "r") as f:
-        data = json.load(f)
-    X, Y = [], []
-    for traj in data:
-        X.extend(traj["states"])
-        Y.extend(traj["actions"])
-    return jnp.array(X), jnp.array(Y)
-
-
 def evaluate(env_tuples, key, policy_model, params, num_evals):
     jit_env_reset, jit_env_step = env_tuples
 

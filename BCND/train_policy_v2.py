@@ -32,7 +32,7 @@ def get_argparser():
     parser.add_argument(
         "--rwd_update",
         type=int,
-        default=1,
+        default=100,
         help="calculate reward after every rwd_update epoch",
     )
     parser.add_argument(
@@ -203,15 +203,16 @@ def train_each_model(predfn_and_opt, opt_state, params, perm, dataset, log_rewar
     def train_batch(carry, p):
         opt_state, params = carry
         batch_x, batch_y, batch_logrwd = X[p], Y[p], log_rewards[p]
-        batch_rwd = jnp.exp(batch_logrwd - jnp.max(batch_logrwd))
-        batch_rwd /= jnp.sum(batch_rwd) + 1e-6
+        batch_rwd = jnp.exp(
+            batch_logrwd - jnp.max(batch_logrwd)
+        )  # divide by the max value, the equation remains the same
 
         def loss_fn(params):
             log_value = pred_fn(params, batch_x, batch_y)
-            return -batch_rwd @ log_value
+            return -jnp.mean(batch_rwd * log_value)
 
         loss, grads = jax.value_and_grad(loss_fn)(params)
-        updates, opt_state = opt.update(grads, opt_state)
+        updates, opt_state = opt.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
         return (opt_state, params), loss
 
@@ -265,7 +266,7 @@ def train(
         perm = jax.random.choice(
             subkey, datasize, shape=(k, steps_per_model, batch_size), replace=False
         )
-        if (algo == "bcnd") and ((ep % rwd_update) == 0):
+        if (algo == "bcnd") and (((ep + 1) % rwd_update) == 0):
             log_rewards = create_log_rewards(mean_policy, dataset, params)
         opt_states, params, loss = train_epoch(
             pred_fn=pred_fn,
@@ -289,7 +290,7 @@ def train(
 
 def create_opts_params(mean_policy, key, learning_rate):
     params = mean_policy.initialize_params(key)
-    opt = optax.adam(learning_rate=learning_rate)
+    opt = optax.adamw(learning_rate=learning_rate)
     opt_states = [opt.init(p) for p in params]
     return opt, opt_states, params
 
@@ -316,8 +317,8 @@ def main(
     batch,
     epochs,
     algo,
-    rwd_update=1,
-    normalize=True,
+    rwd_update=100,
+    normalize=False,
 ):
     current_file_path = os.path.dirname(__file__)
     dataset_path = f"{current_file_path}/noisy_data/{env}/expert-{noise_name}/{noise_level}/trajectories.json"

@@ -278,7 +278,7 @@ def train_models(
             )
             if ((ep + 1) % 100) == 0:
                 print(
-                    f"Itr: {iteration_cnt}, Update for model: {k}, epoch: {ep + 1}, loss: {loss:.5f}"
+                    f"Itr: {iteration_cnt + 1}, Update for model: {k + 1}, epoch: {ep + 1}, loss: {loss:.5f}"
                 )
         all_params.append(params)
     return all_params
@@ -320,7 +320,7 @@ def train(
             iteration_cnt=itr,
         )
         log_rewards = log_reward_fn(all_params)
-        eta = jnp.exp(jnp.maximum(-logmeanexp(log_rewards), 2.0))
+        eta = jnp.exp(jnp.maximum(-logmeanexp(log_rewards), 4.0))
         eval_rwd, eval_std, eval_min, eval_max = evaluate_fn(all_params, evalkey)
         eval_rewards.append((eval_rwd, eval_std, eval_min, eval_max))
         print(

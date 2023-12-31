@@ -31,7 +31,7 @@ def main(env, noise_name, k, batch, epochs, algo):
             print(
                 f"seed: {seed}, env: {env}, noise_name: {noise_name}, noise_level: {noise_level}, k: {k}, algo: {algo}\n"
             )
-            _, losses, eval_rewards = train_policy.main(
+            eval_rewards = train_policy.main(
                 seed=seed,
                 env=env,
                 noise_name=noise_name,
@@ -41,12 +41,10 @@ def main(env, noise_name, k, batch, epochs, algo):
                 epochs=epochs,
                 algo=algo,
             )
-            losses = make_all_val_float(losses)
             eval_rewards = make_all_val_float(eval_rewards)
             noise_level_meta_data.append(
                 {
                     "seed": seed,
-                    "losses": losses,
                     "eval_rewards": eval_rewards,
                 }
             )

@@ -320,7 +320,7 @@ def train(
             iteration_cnt=itr,
         )
         log_rewards = log_reward_fn(all_params)
-        # eta = jnp.max(jnp.exp(-logmeanexp(log_rewards)), 1e4)
+        eta = jnp.exp(jnp.maximum(-logmeanexp(log_rewards), 2.0))
         eval_rwd, eval_std, eval_min, eval_max = evaluate_fn(all_params, evalkey)
         eval_rewards.append((eval_rwd, eval_std, eval_min, eval_max))
         print(

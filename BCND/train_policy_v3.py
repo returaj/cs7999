@@ -181,7 +181,7 @@ def create_opt_params(policy_model, key, learning_rate):
     return opt, opt_state, params
 
 
-# @functools.partial(jax.jit, static_argnums=0)
+@functools.partial(jax.jit, static_argnums=0)
 def create_log_rewards(mean_policy, dataset, params):
     X, Y = dataset
     policy_model = mean_policy.policy_model
@@ -196,6 +196,7 @@ def create_log_rewards(mean_policy, dataset, params):
     return jax.vmap(fn, in_axes=(0, 0, None))(X, Y, subparams)
 
 
+@functools.partial(jax.jit, static_argnums=0)
 def train_each_model_per_epoch(
     predfn_and_opt, opt_state, params, perm, dataset, log_rewards
 ):
@@ -244,6 +245,8 @@ def train_models(
         model_logrewards = log_rewards[model_perm]
         key, subkey = jax.random.split(key)
         opt, opt_state, params = create_opt_params(policy_model, subkey, learning_rate)
+
+        print("-" * 30)
         for ep in range(num_epochs):
             key, subkey = jax.random.split(key)
             perm = jax.random.choice(
@@ -260,7 +263,7 @@ def train_models(
                 dataset=model_dataset,
                 log_rewards=model_logrewards,
             )
-            if ((ep + 1) % 20) == 0:
+            if ((ep + 1) % 50) == 0:
                 print(
                     f"Itr: {iteration_cnt}, Update for model: {k}, epoch: {ep + 1}, loss: {loss:.5f}"
                 )

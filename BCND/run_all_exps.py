@@ -4,7 +4,7 @@ import os
 import json
 import jax
 
-import train_policy_v2 as train_policy
+import train_policy_v3 as train_policy
 
 
 def make_all_val_float(list_data):

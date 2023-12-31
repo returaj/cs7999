@@ -31,6 +31,12 @@ def get_argparser():
     parser.add_argument("--noise_name", type=str, default="normal", help="noise name")
     parser.add_argument("--noise_level", type=str, default="0.1", help="noise level")
     parser.add_argument("--k", type=int, default=5, help="number of ensembles")
+    parser.add_argument(
+        "--k_rwd",
+        type=int,
+        default=5,
+        help="number of models required for calculating reward",
+    )
     parser.add_argument("--algo", type=str, default="bc", help="algorithm type")
     parser.add_argument(
         "--normalize",
@@ -181,19 +187,26 @@ def create_opt_params(policy_model, key, learning_rate):
     return opt, opt_state, params
 
 
-@functools.partial(jax.jit, static_argnums=0)
-def create_log_rewards(mean_policy, dataset, params):
-    X, Y = dataset
+def create_log_rewards_fn(mean_policy, dataset, k=-1):
     policy_model = mean_policy.policy_model
+    X, Y = dataset
+    k = mean_policy.k if k < 0 else k
 
-    def fn(x, y, params):
-        mean, logstd = policy_model.mean_and_logstd(x, params)
-        return policy_model.log_value(y, mean, logstd)
+    @jax.jit
+    def calculate_log_reward_per_model(X, Y, model_params):
+        def fn(x, y, params):
+            mean, logstd = policy_model.mean_and_logstd(x, params)
+            return policy_model.log_value(y, mean, logstd)
 
-    # fix 0th model for reward calculation K_old = 1
-    # See: BCND paper: https://openreview.net/forum?id=zrT3HcsWSAt
-    subparams = params[0]
-    return jax.vmap(fn, in_axes=(0, 0, None))(X, Y, subparams)
+        return jax.vmap(fn, in_axes=(0, 0, None))(X, Y, model_params)
+
+    def calculate_mean_log_rewards(params):
+        val = []
+        for i in range(k):
+            val.append(calculate_log_reward_per_model(X, Y, params[i]))
+        return jnp.mean(jnp.array(val), axis=0)
+
+    return calculate_mean_log_rewards
 
 
 @functools.partial(jax.jit, static_argnums=0)
@@ -263,7 +276,7 @@ def train_models(
                 dataset=model_dataset,
                 log_rewards=model_logrewards,
             )
-            if ((ep + 1) % 50) == 0:
+            if ((ep + 1) % 100) == 0:
                 print(
                     f"Itr: {iteration_cnt}, Update for model: {k}, epoch: {ep + 1}, loss: {loss:.5f}"
                 )
@@ -278,6 +291,7 @@ def train(
     batch_size,
     num_epochs,
     num_iterations,
+    k_rwd,
     dataset,
 ):
     key, subkey = jax.random.split(key)
@@ -287,6 +301,7 @@ def train(
     k_perm = jax.random.choice(
         subkey, datasize, shape=(num_models, model_datasize), replace=False
     )
+    log_reward_fn = create_log_rewards_fn(mean_policy, dataset, k=k_rwd)
     log_rewards = jnp.zeros(datasize)
     eta = 1
 
@@ -304,8 +319,8 @@ def train(
             k_perm=k_perm,
             iteration_cnt=itr,
         )
-        log_rewards = create_log_rewards(mean_policy, dataset, all_params)
-        # eta = jnp.exp(-logmeanexp(log_rewards))
+        log_rewards = log_reward_fn(all_params)
+        # eta = jnp.max(jnp.exp(-logmeanexp(log_rewards)), 1e4)
         eval_rwd, eval_std, eval_min, eval_max = evaluate_fn(all_params, evalkey)
         eval_rewards.append((eval_rwd, eval_std, eval_min, eval_max))
         print(
@@ -339,6 +354,7 @@ def main(
     epochs,
     algo,
     num_iterations=5,
+    k_rwd=5,
     normalize=False,
 ):
     current_file_path = os.path.dirname(__file__)
@@ -363,6 +379,7 @@ def main(
         batch_size=batch,
         num_epochs=epochs,
         num_iterations=num_iterations,
+        k_rwd=k_rwd,
         dataset=(norm_X, norm_Y),
     )
     return eval_rewards
@@ -384,6 +401,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         algo=args.algo,
         num_iterations=args.iterations,
+        k_rwd=args.k_rwd,
         normalize=args.normalize,
     )
 

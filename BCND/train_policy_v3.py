@@ -201,8 +201,9 @@ def create_log_rewards_fn(mean_policy, dataset, k=-1):
         return jax.vmap(fn, in_axes=(0, 0, None))(X, Y, model_params)
 
     def calculate_mean_log_rewards(params):
+        itr_k = min(len(params), k)
         val = []
-        for i in range(k):
+        for i in range(itr_k):
             val.append(calculate_log_reward_per_model(X, Y, params[i]))
         return jnp.mean(jnp.array(val), axis=0)
 
